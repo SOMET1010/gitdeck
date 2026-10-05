@@ -156,3 +156,7 @@ Preliminary conclusion: the current architecture (provider → server module →
 - Whether the pre-existing typecheck errors and the missing test CI must be fixed in the fork (and possibly proposed upstream).
 - Sources of truth for "done / to do / missing features" and the rules for "tech debt" and "stable".
 - Preview deployment target (Gitdeck needs a Node server + token, not a static site).
+
+## 9. Update — Lot 0 (fork sanitation)
+
+Commit `70c6de5`: the 7 typecheck errors are fixed and `.github/workflows/quality.yml` (npm ci, test, typecheck, build on Node 22) is added. `npm test` ✅ 123 · `npm run typecheck` ✅ · `npm run build` ✅ · CI Quality ✅. Details in [DEV_COCKPIT_GAP_ANALYSIS.md](DEV_COCKPIT_GAP_ANALYSIS.md).
