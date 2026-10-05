@@ -1,4 +1,4 @@
-export type DashboardTab = "inbox" | "repos" | "issues" | "prs" | "kanban" | "insights" | "alerts" | "ci" | "digests";
+export type DashboardTab = "inbox" | "repos" | "issues" | "prs" | "kanban" | "insights" | "alerts" | "ci" | "digests" | "cockpit";
 
 export type DashboardResource = "repos" | "issues" | "prs";
 
@@ -41,6 +41,7 @@ export function dataRequirementsForTab(
       break;
     case "kanban":
     case "digests":
+    case "cockpit":
       break;
   }
 

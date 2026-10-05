@@ -31,6 +31,7 @@ import { InsightsView } from "./components/views/InsightsView";
 import { RepoGrid } from "./components/views/RepoGrid";
 import { KanbanView } from "./components/views/KanbanView";
 import { CIHealthView } from "./components/views/CIHealthView";
+import { DevCockpitView } from "./components/views/DevCockpitView";
 import type {
   CIHealthData,
   DailyDigestEntry,
@@ -59,6 +60,7 @@ import {
 } from "./utils/dashboard";
 import { clampPage } from "./utils/pagination";
 import { dataRequirementsForTab } from "./utils/dataRequirements";
+import { parseRepositoryInput } from "./utils/devCockpit/display";
 import { getOwner } from "./utils/repository";
 import { formatNumber } from "./utils/format";
 import { clearStatsCache } from "./utils/statsCache";
@@ -67,7 +69,7 @@ import { useI18n } from "./i18n/I18nProvider";
 import { useAccounts, useCapability } from "./contexts/AccountContext";
 import { useDashboardData } from "./hooks/useDashboardData";
 
-type Tab = "inbox" | "repos" | "issues" | "prs" | "kanban" | "insights" | "alerts" | "ci" | "digests";
+type Tab = "inbox" | "repos" | "issues" | "prs" | "kanban" | "insights" | "alerts" | "ci" | "digests" | "cockpit";
 type Theme = "dark" | "light" | "auto";
 type TextSize = "small" | "normal" | "large";
 
@@ -80,12 +82,31 @@ const TAB_ROUTES: Record<Tab, string> = {
   insights: "/insights",
   alerts: "/alerts",
   ci: "/ci",
+  cockpit: "/cockpit",
   digests: "/daily",
 };
 
 const ROUTE_TABS = new Map<string, Tab>(Object.entries(TAB_ROUTES).map(([tab, route]) => [route, tab as Tab]));
 const DETAIL_TABS = new Set<DetailTab>(["overview", "actions", "commits", "pull-requests", "issues", "milestones", "releases", "branches", "forks", "traffic", "mentions", "discussions", "dependents"]);
 const METRIC_KINDS = new Set<MetricKind>(["stars", "forks"]);
+
+const COCKPIT_REPO_KEY = "gh-dash.cockpitRepo";
+
+function readCockpitRepository(): string | null {
+  try {
+    return parseRepositoryInput(localStorage.getItem(COCKPIT_REPO_KEY) ?? "");
+  } catch {
+    return null;
+  }
+}
+
+function writeCockpitRepository(repository: string): void {
+  try {
+    localStorage.setItem(COCKPIT_REPO_KEY, repository);
+  } catch {
+    // Storage can be unavailable (private mode); the URL still carries the target.
+  }
+}
 
 function tabFromPath(pathname: string): Tab {
   if (pathname === "/alert") return "alerts";
@@ -171,6 +192,10 @@ export function App() {
   const routeRepoName = searchParams.get("repo") || "";
   const repoDetailTab = detailTabFromParams(searchParams);
   const routeMetricKind = metricKindFromParams(searchParams);
+  const cockpitRepository = tab === "cockpit"
+    ? parseRepositoryInput(searchParams.get("repository") ?? "") ?? readCockpitRepository()
+    : null;
+  const cockpitBranch = tab === "cockpit" ? searchParams.get("branch")?.trim() || null : null;
 
   // Read cached filters once — shared across all filter/sort useState initializers below.
   const [cachedFiltersOnMount] = useState(() => {
@@ -371,6 +396,7 @@ export function App() {
     document.body.classList.toggle("tab-insights", tab === "insights");
     document.body.classList.toggle("tab-alerts", tab === "alerts");
     document.body.classList.toggle("tab-ci", tab === "ci");
+    document.body.classList.toggle("tab-cockpit", tab === "cockpit");
     document.body.classList.toggle("tab-digests", tab === "digests");
     document.body.classList.toggle("filters-open", filtersOpen);
   }, [tab, filtersOpen]);
@@ -594,6 +620,7 @@ export function App() {
   const securityInsightsAlertCount = securityInsights.reduce((sum, insight) => sum + insight.alerts.length, 0);
   const securityAverageHealth = securityInsights.length ? Math.round(securityInsights.reduce((sum, insight) => sum + insight.healthScore, 0) / securityInsights.length) : 0;
   const reposByName = useMemo(() => new Map(repos.map((repo) => [repo.nameWithOwner, repo])), [repos]);
+  const knownRepoNames = useMemo(() => repos.map((repo) => repo.nameWithOwner).sort((a, b) => a.localeCompare(b)), [repos]);
   const repoModal = useMemo(
     () => (routeRepoName && !routeMetricKind ? reposByName.get(routeRepoName) ?? null : null),
     [reposByName, routeMetricKind, routeRepoName],
@@ -685,6 +712,11 @@ export function App() {
     navigate(TAB_ROUTES[tab]);
   }
 
+  function changeCockpitTarget(repository: string, branch: string | null) {
+    writeCockpitRepository(repository);
+    setSearchParams(branch ? { repository, branch } : { repository });
+  }
+
   function changeRepoDetailTab(detail: DetailTab) {
     if (!repoModal) return;
     setSearchParams({ repo: repoModal.nameWithOwner, detail });
@@ -698,6 +730,7 @@ export function App() {
     { key: "insights" as const, label: t("tabs.insights"), count: filteredInsights.length, ready: insightsLoaded, icon: <PulseIcon /> },
     { key: "alerts" as const, label: t("tabs.alerts"), count: totalSecurityAlerts, ready: insightsLoaded, icon: <PulseIcon /> },
     { key: "ci" as const, label: t("tabs.ci"), count: ciHealth.length, ready: ciLoaded, icon: <PulseIcon /> },
+    { key: "cockpit" as const, label: t("tabs.cockpit"), count: 0, ready: true, showCount: false, icon: <PulseIcon /> },
     { key: "digests" as const, label: t("tabs.digest"), count: dailyDigests.length, ready: digestsLoaded, icon: <PulseIcon /> },
     ...(projectsEnabled
       ? [{ key: "kanban" as const, label: t("tabs.board"), count: boardCount, ready: boardLoaded, icon: <BoardIcon /> }]
@@ -755,7 +788,7 @@ export function App() {
                 <button className={`tab ${tab === item.key ? "active" : ""}`} key={item.key} role="tab" aria-busy={tab === item.key && !item.ready} onClick={() => navigateTab(item.key)}>
                   {item.icon}
                   {item.label}
-                  {item.ready ? <span className="tab-badge">{formatNumber(item.count)}</span> : tab === item.key ? (
+                  {item.ready ? ("showCount" in item && !item.showCount ? null : <span className="tab-badge">{formatNumber(item.count)}</span>) : tab === item.key ? (
                     <span className="tab-badge loading" title={t("common.loading")} aria-label={t("common.loading")}><LoadingIcon /></span>
                   ) : null}
                 </button>
@@ -942,6 +975,15 @@ export function App() {
                 </div>
               );
             })()
+          ) : null}
+
+          {tab === "cockpit" ? (
+            <DevCockpitView
+              repository={cockpitRepository}
+              branch={cockpitBranch}
+              knownRepos={knownRepoNames}
+              onTargetChange={changeCockpitTarget}
+            />
           ) : null}
 
           {tab === "digests" ? (

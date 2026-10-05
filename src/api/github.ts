@@ -22,6 +22,7 @@ import type {
   RepoTrafficDetails,
   StargazerNode,
 } from "../types/github";
+import type { DevCockpitData } from "../types/devCockpit";
 
 export class AuthRequiredClientError extends Error {
   constructor(message = "authentication required") {
@@ -293,6 +294,12 @@ export function fetchDailyDigests(signal?: AbortSignal, period: "day" | "week" |
 
 export function fetchCIHealth(fresh = false, signal?: AbortSignal): Promise<CIHealthData> {
   return readJson<CIHealthData>(`/api/ci-health${fresh ? "?fresh=1" : ""}`, withSignal(signal), "/api/ci-health");
+}
+
+export function fetchDevCockpit(repo: string, branch: string | null, signal?: AbortSignal): Promise<DevCockpitData> {
+  const params = new URLSearchParams({ repo });
+  if (branch) params.set("branch", branch);
+  return readJson<DevCockpitData>(`/api/dev-cockpit?${params.toString()}`, withSignal(signal));
 }
 
 export function fetchNotifications(fresh = false, signal?: AbortSignal): Promise<NotificationsData> {
