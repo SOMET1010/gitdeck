@@ -117,6 +117,24 @@ export async function restApiPaginate<T = unknown>(path: string): Promise<RestRe
   return { ok: true, data: all };
 }
 
+/** Downloads a binary REST resource (e.g. an Actions artifact archive), following redirects. */
+export async function restApiBinary(path: string): Promise<RestResult<Buffer>> {
+  let token: string;
+  try {
+    token = await getToken();
+  } catch (error) {
+    if (error instanceof AuthRequiredError) {
+      return { ok: false, error: error.message, status: 401 };
+    }
+    throw error;
+  }
+  const response = await fetch(buildUrl(path), { headers: authHeaders(token) });
+  if (!response.ok) {
+    return { ok: false, error: `${SERVICE} ${response.status} ${response.statusText}`.trim(), status: response.status };
+  }
+  return { ok: true, data: Buffer.from(await response.arrayBuffer()) };
+}
+
 export async function ghApiJson(path: string): Promise<RestResult> {
   return restApi(path);
 }
