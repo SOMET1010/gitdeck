@@ -22,7 +22,7 @@ describe("color utilities", () => {
   });
 
   it("emits Primer-style CSS variables for label colors", () => {
-    const vars = getLabelCssVars("fbca04");
+    const vars = getLabelCssVars("fbca04") as Record<string, string> | undefined;
     expect(vars).toBeDefined();
     expect(vars).toMatchObject({
       "--label-r": "251",
@@ -43,6 +43,7 @@ describe("color utilities", () => {
   });
 
   it("returns undefined for invalid hex inputs", () => {
+    expect(getLabelCssVars(undefined)).toBeUndefined();
     expect(getLabelCssVars("")).toBeUndefined();
     expect(getLabelCssVars("abc")).toBeUndefined();
     expect(getLabelCssVars("zzzzzz")).toBeUndefined();
