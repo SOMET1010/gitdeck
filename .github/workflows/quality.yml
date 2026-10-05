@@ -23,13 +23,28 @@ jobs:
           cache: npm
 
       - name: Install dependencies
+        id: install
         run: npm ci
 
+      # Test, Typecheck and Build each run once dependencies are installed, so a
+      # failure in one still reports a separate result for the others.
       - name: Test
-        run: npm test
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm test -- --reporter=default --reporter=json --outputFile.json=vitest-report.json
+
+      - name: Upload Vitest report
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-report
+          path: vitest-report.json
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Typecheck
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run typecheck
 
       - name: Build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run build
