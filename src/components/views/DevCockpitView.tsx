@@ -4,8 +4,11 @@ import { useI18n } from "../../i18n/I18nProvider";
 import type { DevCockpitData } from "../../types/devCockpit";
 import { parseRepositoryInput, shortSha } from "../../utils/devCockpit/display";
 import { formatNumber, formatRelativeTime } from "../../utils/format";
+import { FeaturesPanel } from "../devCockpit/FeaturesPanel";
+import { NextActionsPanel } from "../devCockpit/NextActionsPanel";
 import { QualityPanel } from "../devCockpit/QualityPanel";
 import { ReadinessPanel } from "../devCockpit/ReadinessPanel";
+import { RemainingWorkPanel } from "../devCockpit/RemainingWorkPanel";
 
 interface DevCockpitViewProps {
   repository: string | null;
@@ -144,8 +147,12 @@ export function DevCockpitView({ repository, branch, knownRepos, onTargetChange 
 
           <div className="cockpit-grid">
             <ReadinessPanel readiness={data.readiness} />
+            <NextActionsPanel actions={data.nextActions} />
             <QualityPanel quality={data.quality} />
+            <RemainingWorkPanel remaining={data.remaining} p0Issues={data.p0Issues} />
           </div>
+
+          <FeaturesPanel features={data.features} />
 
           {data.errors.length ? (
             <section className="cockpit-panel">

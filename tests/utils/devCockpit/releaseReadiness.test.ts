@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { CheckState, QualityCheck, QualityCheckId, TestReport } from "../../../src/types/devCockpit";
+import type { CheckState, ReadinessCheck, ReadinessCriterionId, TestReport } from "../../../src/types/devCockpit";
 import { evaluateReleaseReadiness } from "../../../src/utils/devCockpit/releaseReadiness";
 
 const NOW = "2026-10-05T12:00:00.000Z";
 
-function check(id: QualityCheckId, state: CheckState): QualityCheck {
+function check(id: ReadinessCriterionId, state: CheckState): ReadinessCheck {
   return {
     id,
     state,
@@ -13,9 +13,9 @@ function check(id: QualityCheckId, state: CheckState): QualityCheck {
   };
 }
 
-function checks(states: Partial<Record<QualityCheckId, CheckState>> = {}) {
-  const ids: QualityCheckId[] = ["ci", "tests", "typecheck", "build"];
-  return Object.fromEntries(ids.map((id) => [id, check(id, states[id] ?? "PASS")])) as Record<QualityCheckId, QualityCheck>;
+function checks(states: Partial<Record<ReadinessCriterionId, CheckState>> = {}) {
+  const ids: ReadinessCriterionId[] = ["ci", "tests", "typecheck", "build", "p0Issues"];
+  return Object.fromEntries(ids.map((id) => [id, check(id, states[id] ?? "PASS")])) as Record<ReadinessCriterionId, ReadinessCheck>;
 }
 
 function report(counts: Partial<NonNullable<TestReport["counts"]>> = {}): TestReport {
@@ -33,7 +33,7 @@ describe("evaluateReleaseReadiness", () => {
     expect(result.verdict).toBe("READY");
     expect(result.blockers).toEqual([]);
     expect(result.unknowns).toEqual([]);
-    expect(result.evidence.length).toBe(5);
+    expect(result.evidence.length).toBe(6);
   });
 
   it("is NOT_READY when a required check is explicitly red", () => {
@@ -66,7 +66,7 @@ describe("evaluateReleaseReadiness", () => {
     const { ci, tests, typecheck } = checks();
     const result = evaluateReleaseReadiness({ checks: { ci, tests, typecheck }, testReport: report() });
     expect(result.verdict).toBe("UNKNOWN");
-    expect(result.unknowns.map((item) => item.code)).toEqual(["build-missing"]);
+    expect(result.unknowns.map((item) => item.code)).toEqual(["build-missing", "p0Issues-missing"]);
   });
 
   it("never turns an empty set of criteria into READY", () => {
@@ -76,8 +76,18 @@ describe("evaluateReleaseReadiness", () => {
   });
 
   it("stays UNKNOWN when every check is UNKNOWN, whatever the test report says", () => {
-    const states = { ci: "UNKNOWN", tests: "UNKNOWN", typecheck: "UNKNOWN", build: "UNKNOWN" } as const;
+    const states = { ci: "UNKNOWN", tests: "UNKNOWN", typecheck: "UNKNOWN", build: "UNKNOWN", p0Issues: "UNKNOWN" } as const;
     expect(evaluateReleaseReadiness({ checks: checks(states), testReport: report() }).verdict).toBe("UNKNOWN");
+  });
+
+  it("is NOT_READY when an open P0 issue is reported", () => {
+    const result = evaluateReleaseReadiness({ checks: checks({ p0Issues: "FAIL" }), testReport: report() });
+    expect(result.verdict).toBe("NOT_READY");
+    expect(result.blockers[0]).toMatchObject({ code: "p0Issues-failed", criterion: "p0Issues" });
+  });
+
+  it("is UNKNOWN when open issues could not be read", () => {
+    expect(evaluateReleaseReadiness({ checks: checks({ p0Issues: "UNKNOWN" }), testReport: report() }).verdict).toBe("UNKNOWN");
   });
 
   it("warns about skipped and todo tests and about missing counts without blocking", () => {

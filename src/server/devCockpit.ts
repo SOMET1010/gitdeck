@@ -1,4 +1,4 @@
-import type { DevCockpitBlockError, DevCockpitData, HeadCommit, QualityCheck, TestReport } from "../types/devCockpit";
+import type { CockpitItem, DevCockpitBlockError, DevCockpitData, HeadCommit, QualityCheck, TestReport } from "../types/devCockpit";
 import {
   buildTestReport,
   evaluateCi,
@@ -11,8 +11,18 @@ import {
   type StepCategory,
   type WorkflowRunInput,
 } from "../utils/devCockpit/ciEvidence";
+import {
+  buildRemainingWork,
+  classifyIssue,
+  evaluateP0Issues,
+  itemsFromReadiness,
+  toIssueInput,
+  unknownFeatures,
+  type IssueInput,
+} from "../utils/devCockpit/classifyIssues";
+import { buildNextActions } from "../utils/devCockpit/nextActions";
 import { evaluateReleaseReadiness } from "../utils/devCockpit/releaseReadiness";
-import { restApi, restApiBinary } from "./githubClient";
+import { restApi, restApiBinary, restApiPaginate } from "./githubClient";
 import { readZipEntries } from "./zip";
 
 /** Artifact name convention for the Vitest JSON report (see .github/workflows/quality.yml). */
@@ -32,15 +42,29 @@ function unknownCheck(id: QualityCheck["id"], reason: string): QualityCheck {
   return { id, state: "UNKNOWN", reason, evidence: [] };
 }
 
-async function loadHeadCommit(repo: string, requestedBranch: string | null, errors: DevCockpitBlockError[]): Promise<HeadCommit | null> {
-  let branch = requestedBranch;
+interface RepositoryMeta {
+  defaultBranch: string | null;
+  hasIssues: boolean | null;
+  url: string | undefined;
+}
+
+async function loadRepository(repo: string, errors: DevCockpitBlockError[]): Promise<RepositoryMeta | null> {
+  const meta = await restApi<{ default_branch?: string; has_issues?: boolean; html_url?: string }>(`/repos/${repo}`);
+  if (!meta.ok || !meta.data) {
+    errors.push({ block: "repository", reason: meta.ok ? "Repository metadata not returned by GitHub." : meta.error });
+    return null;
+  }
+  return {
+    defaultBranch: meta.data.default_branch ?? null,
+    hasIssues: typeof meta.data.has_issues === "boolean" ? meta.data.has_issues : null,
+    url: meta.data.html_url,
+  };
+}
+
+async function loadHeadCommit(repo: string, branch: string | null, errors: DevCockpitBlockError[]): Promise<HeadCommit | null> {
   if (!branch) {
-    const meta = await restApi<{ default_branch?: string }>(`/repos/${repo}`);
-    if (!meta.ok || !meta.data?.default_branch) {
-      errors.push({ block: "repository", reason: meta.ok ? "Default branch not reported by GitHub." : meta.error });
-      return null;
-    }
-    branch = meta.data.default_branch;
+    errors.push({ block: "headCommit", reason: "Default branch unknown." });
+    return null;
   }
   const commit = await restApi<{ sha: string; html_url: string; commit?: { message?: string; committer?: { date?: string } } }>(
     `/repos/${repo}/commits/${encodeURIComponent(branch)}`,
@@ -56,6 +80,27 @@ async function loadHeadCommit(repo: string, requestedBranch: string | null, erro
     url: commit.data.html_url,
     committedAt: commit.data.commit?.committer?.date ?? null,
   };
+}
+
+/** Open issues as cockpit items; null when they cannot be read (or the repository has no issues). */
+async function loadIssueItems(
+  repo: string,
+  meta: RepositoryMeta | null,
+  observedAt: string,
+  errors: DevCockpitBlockError[],
+): Promise<{ items: CockpitItem[] | null; reason: string }> {
+  if (!meta || meta.hasIssues === null) return { items: null, reason: "Repository metadata unavailable, so open issues were not read." };
+  if (!meta.hasIssues) return { items: null, reason: "Issues are disabled on this repository: no source for remaining work." };
+  const result = await restApiPaginate<Record<string, unknown>>(`/repos/${repo}/issues?state=open&per_page=100`);
+  if (!result.ok) {
+    errors.push({ block: "issues", reason: result.error });
+    return { items: null, reason: `Open issues unavailable: ${result.error}` };
+  }
+  const items = result.data
+    .map(toIssueInput)
+    .filter((issue): issue is IssueInput => issue !== null)
+    .map((issue) => classifyIssue(issue, repo, observedAt));
+  return { items, reason: "" };
 }
 
 async function loadJobs(repo: string, runs: WorkflowRunInput[], errors: DevCockpitBlockError[]): Promise<JobInput[] | null> {
@@ -104,17 +149,18 @@ async function loadTestReport(repo: string, runs: WorkflowRunInput[], observedAt
 }
 
 /**
- * Release readiness and quality status of a repository, anchored on the head commit of a branch
+ * Release readiness, quality, remaining work and next actions of a repository, anchored on the head commit of a branch
  * (default branch unless `branch` is given). Each block degrades to UNKNOWN with a reason.
  */
 export async function getDevCockpit(repo: string, branch: string | null = null, now: Date = new Date()): Promise<DevCockpitResult> {
   const observedAt = now.toISOString();
   const errors: DevCockpitBlockError[] = [];
 
-  const headCommit = await loadHeadCommit(repo, branch, errors);
-  if (!headCommit && errors.some((error) => /authentication required/i.test(error.reason))) {
+  const meta = await loadRepository(repo, errors);
+  if (!meta && errors.some((error) => /authentication required/i.test(error.reason))) {
     return { ok: false, error: "authentication required", needsAuth: true };
   }
+  const headCommit = await loadHeadCommit(repo, branch ?? meta?.defaultBranch ?? null, errors);
 
   let ci = unknownCheck("ci", "Head commit unknown.");
   const steps: Record<StepCategory, QualityCheck> = {
@@ -150,7 +196,9 @@ export async function getDevCockpit(repo: string, branch: string | null = null, 
     }
   }
 
-  const readiness = evaluateReleaseReadiness({ checks: { ci, ...steps }, testReport });
+  const issues = await loadIssueItems(repo, meta, observedAt, errors);
+  const p0Issues = evaluateP0Issues(issues.items, meta?.hasIssues ?? null, observedAt, meta?.url, issues.reason);
+  const readiness = evaluateReleaseReadiness({ checks: { ci, ...steps, p0Issues }, testReport });
   return {
     ok: true,
     repository: repo,
@@ -158,6 +206,10 @@ export async function getDevCockpit(repo: string, branch: string | null = null, 
     headCommit,
     readiness,
     quality: { ci, tests: steps.tests, typecheck: steps.typecheck, build: steps.build, testReport },
+    p0Issues,
+    features: unknownFeatures(),
+    remaining: buildRemainingWork(issues.items, issues.reason, itemsFromReadiness(readiness, repo, observedAt)),
+    nextActions: buildNextActions(readiness, issues.items ?? [], observedAt),
     errors,
   };
 }

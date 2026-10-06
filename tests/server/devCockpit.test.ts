@@ -3,8 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const restApi = vi.fn();
 const restApiBinary = vi.fn();
+const restApiPaginate = vi.fn();
 
-vi.mock("../../src/server/githubClient", () => ({ restApi, restApiBinary }));
+vi.mock("../../src/server/githubClient", () => ({ restApi, restApiBinary, restApiPaginate }));
 
 const { getDevCockpit } = await import("../../src/server/devCockpit");
 
@@ -49,13 +50,15 @@ const base: Responses = {
   [`/repos/${REPO}/actions/runs?`]: { ok: true, data: { workflow_runs: [RUN] } },
   [`/repos/${REPO}/actions/runs/7/jobs`]: { ok: true, data: JOBS },
   [`/repos/${REPO}/actions/runs/7/artifacts`]: { ok: true, data: { artifacts: [] } },
-  [`/repos/${REPO}`]: { ok: true, data: { default_branch: "main" } },
+  [`/repos/${REPO}`]: { ok: true, data: { default_branch: "main", has_issues: true, html_url: "https://github.com/owner/repo" } },
 };
 
 describe("getDevCockpit", () => {
   beforeEach(() => {
     restApi.mockReset();
     restApiBinary.mockReset();
+    restApiPaginate.mockReset();
+    restApiPaginate.mockResolvedValue({ ok: true, data: [] });
   });
 
   it("anchors CI on the default branch head and reports each step", async () => {
@@ -71,12 +74,55 @@ describe("getDevCockpit", () => {
     expect(result.errors).toEqual([]);
   });
 
-  it("uses the requested branch without reading the repository metadata", async () => {
+  it("uses the requested branch instead of the default branch", async () => {
     routeResponses(base);
     const result = await getDevCockpit(REPO, "feature/x", NOW);
     expect(result.ok && result.headCommit?.branch).toBe("feature/x");
     expect(restApi).toHaveBeenCalledWith(`/repos/${REPO}/commits/feature%2Fx`);
-    expect(restApi).not.toHaveBeenCalledWith(`/repos/${REPO}`);
+  });
+
+  it("groups open issues by source priority and blocks the release on an open P0", async () => {
+    routeResponses(base);
+    restApiPaginate.mockResolvedValue({
+      ok: true,
+      data: [
+        { number: 1, title: "Crash on start", html_url: "u1", labels: [{ name: "bug" }, { name: "P0" }], updated_at: "d" },
+        { number: 2, title: "Waiting on API", html_url: "u2", labels: [{ name: "blocked" }, { name: "P1" }], updated_at: "d" },
+        { number: 3, title: "No priority", html_url: "u3", labels: [], updated_at: "d" },
+        { number: 4, title: "A pull request", html_url: "u4", labels: [], pull_request: {}, updated_at: "d" },
+      ],
+    });
+    const result = await getDevCockpit(REPO, null, NOW);
+    if (!result.ok) throw new Error("expected ok");
+    expect(restApiPaginate).toHaveBeenCalledWith(`/repos/${REPO}/issues?state=open&per_page=100`);
+    expect(result.remaining.state).toBe("AVAILABLE");
+    expect(result.remaining.bySourcePriority.P0.map((item) => [item.title, item.type])).toEqual([["Crash on start", "BUG"]]);
+    expect(result.remaining.bySourcePriority.P1.map((item) => item.status)).toEqual(["BLOCKED"]);
+    expect(result.remaining.bySourcePriority.none.map((item) => item.title)).toEqual(["No priority"]);
+    expect(result.p0Issues.state).toBe("FAIL");
+    expect(result.readiness.verdict).toBe("NOT_READY");
+    expect(result.nextActions.map((action) => [action.kind, action.target])).toEqual([["resolve-issue", "1"], ["unblock-issue", "2"]]);
+    expect(result.features.state).toBe("UNKNOWN");
+  });
+
+  it("treats disabled issues as no possible P0 but no source for remaining work", async () => {
+    routeResponses({ ...base, [`/repos/${REPO}`]: { ok: true, data: { default_branch: "main", has_issues: false } } });
+    const result = await getDevCockpit(REPO, null, NOW);
+    if (!result.ok) throw new Error("expected ok");
+    expect(restApiPaginate).not.toHaveBeenCalled();
+    expect(result.p0Issues.state).toBe("PASS");
+    expect(result.remaining.state).toBe("UNKNOWN");
+    expect(result.remaining.reason).toContain("disabled");
+  });
+
+  it("keeps the verdict UNKNOWN when open issues cannot be read", async () => {
+    routeResponses(base);
+    restApiPaginate.mockResolvedValue({ ok: false, error: "rate limited", status: 403 });
+    const result = await getDevCockpit(REPO, null, NOW);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.p0Issues.state).toBe("UNKNOWN");
+    expect(result.readiness.verdict).toBe("UNKNOWN");
+    expect(result.errors).toContainEqual({ block: "issues", reason: "rate limited" });
   });
 
   it("degrades to UNKNOWN when job details are unavailable", async () => {

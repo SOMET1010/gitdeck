@@ -55,11 +55,18 @@ export type CheckState = "PASS" | "FAIL" | "UNKNOWN";
 
 export type QualityCheckId = "ci" | "tests" | "typecheck" | "build";
 
-export interface QualityCheck {
-  id: QualityCheckId;
+/** Criteria a release readiness verdict can require. */
+export type ReadinessCriterionId = QualityCheckId | "p0Issues";
+
+export interface ReadinessCheck {
+  id: ReadinessCriterionId;
   state: CheckState;
   reason: string;
   evidence: Evidence[];
+}
+
+export interface QualityCheck extends ReadinessCheck {
+  id: QualityCheckId;
 }
 
 export interface TestCounts {
@@ -82,6 +89,8 @@ export type ReadinessVerdict = "READY" | "NOT_READY" | "UNKNOWN";
 
 export interface ReadinessFinding {
   code: string;
+  /** Criterion the finding is about, when it comes from a required criterion. */
+  criterion?: ReadinessCriterionId;
   message: string;
   evidence: Evidence[];
 }
@@ -103,6 +112,40 @@ export interface HeadCommit {
   committedAt: string | null;
 }
 
+/** Block-level availability: UNKNOWN always carries a reason. */
+export type BlockState = "AVAILABLE" | "UNKNOWN";
+
+export interface FeaturesBlock {
+  state: BlockState;
+  reason: string;
+  items: CockpitItem[];
+}
+
+export interface RemainingWorkBlock {
+  state: BlockState;
+  reason: string;
+  /** Open items grouped by the priority carried by their source (labels). */
+  bySourcePriority: Record<Priority | "none", CockpitItem[]>;
+  /** Items Gitdeck suggests a priority for (inference, level D), grouped by that suggestion. */
+  bySuggestedPriority: Record<Priority, CockpitItem[]>;
+}
+
+export type NextActionKind = "fix-check" | "fix-failing-tests" | "resolve-issue" | "unblock-issue" | "provide-proof";
+
+export interface NextAction {
+  id: string;
+  kind: NextActionKind;
+  /** English fallback title; the UI translates from `kind` and `target`. */
+  title: string;
+  /** Check id, issue number or criterion the action is about. */
+  target: string;
+  /** What the action is about in plain words: issue title or observed cause. */
+  subject: string;
+  priority: { source: Priority | null; suggested: Priority | null };
+  url?: string;
+  evidence: Evidence[];
+}
+
 export interface DevCockpitBlockError {
   block: string;
   reason: string;
@@ -121,5 +164,10 @@ export interface DevCockpitData {
     build: QualityCheck;
     testReport: TestReport;
   };
+  /** Readiness criterion "no open issue labelled P0". */
+  p0Issues: ReadinessCheck;
+  features: FeaturesBlock;
+  remaining: RemainingWorkBlock;
+  nextActions: NextAction[];
   errors: DevCockpitBlockError[];
 }
