@@ -31,6 +31,7 @@ import { InsightsView } from "./components/views/InsightsView";
 import { RepoGrid } from "./components/views/RepoGrid";
 import { KanbanView } from "./components/views/KanbanView";
 import { CIHealthView } from "./components/views/CIHealthView";
+import { AttentionView } from "./components/views/AttentionView";
 import { DevCockpitView } from "./components/views/DevCockpitView";
 import type {
   CIHealthData,
@@ -69,7 +70,7 @@ import { useI18n } from "./i18n/I18nProvider";
 import { useAccounts, useCapability } from "./contexts/AccountContext";
 import { useDashboardData } from "./hooks/useDashboardData";
 
-type Tab = "inbox" | "repos" | "issues" | "prs" | "kanban" | "insights" | "alerts" | "ci" | "digests" | "cockpit";
+type Tab = "inbox" | "repos" | "issues" | "prs" | "kanban" | "insights" | "alerts" | "ci" | "digests" | "cockpit" | "attention";
 type Theme = "dark" | "light" | "auto";
 type TextSize = "small" | "normal" | "large";
 
@@ -83,6 +84,7 @@ const TAB_ROUTES: Record<Tab, string> = {
   alerts: "/alerts",
   ci: "/ci",
   cockpit: "/cockpit",
+  attention: "/attention",
   digests: "/daily",
 };
 
@@ -110,6 +112,7 @@ function writeCockpitRepository(repository: string): void {
 
 function tabFromPath(pathname: string): Tab {
   if (pathname === "/alert") return "alerts";
+  if (pathname === "/" || pathname === "/index.html") return "attention";
   return ROUTE_TABS.get(pathname) ?? "repos";
 }
 
@@ -397,13 +400,14 @@ export function App() {
     document.body.classList.toggle("tab-alerts", tab === "alerts");
     document.body.classList.toggle("tab-ci", tab === "ci");
     document.body.classList.toggle("tab-cockpit", tab === "cockpit");
+    document.body.classList.toggle("tab-attention", tab === "attention");
     document.body.classList.toggle("tab-digests", tab === "digests");
     document.body.classList.toggle("filters-open", filtersOpen);
   }, [tab, filtersOpen]);
 
   useEffect(() => {
     if (location.pathname === "/" || location.pathname === "/index.html") {
-      navigate(`${TAB_ROUTES.repos}${location.search}`, { replace: true });
+      navigate(`${TAB_ROUTES.attention}${location.search}`, { replace: true });
       return;
     }
     if (location.pathname === "/alert") {
@@ -723,6 +727,7 @@ export function App() {
   }
 
   const tabs = [
+    { key: "attention" as const, label: t("tabs.attention"), count: 0, ready: true, showCount: false, icon: <PulseIcon /> },
     { key: "inbox" as const, label: t("tabs.inbox"), count: issues.length + pullRequests.length, ready: inboxLoaded, icon: <InboxIcon /> },
     { key: "repos" as const, label: t("tabs.repositories"), count: repos.length, ready: reposLoaded, icon: <BookIcon /> },
     { key: "issues" as const, label: t("tabs.issues"), count: issues.length, ready: issuesLoaded, icon: <IssueIcon /> },
@@ -976,6 +981,8 @@ export function App() {
               );
             })()
           ) : null}
+
+          {tab === "attention" ? <AttentionView /> : null}
 
           {tab === "cockpit" ? (
             <DevCockpitView

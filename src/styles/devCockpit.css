@@ -10,7 +10,7 @@
   @media (max-width: 560px) {
     .cockpit-toolbar { display: grid; grid-template-columns: auto minmax(0, 1fr); }
     .cockpit-input { width: 100%; }
-    .cockpit-toolbar .btn, .cockpit-input-error { grid-column: 1 / -1; justify-content: center; }
+    .cockpit-toolbar .btn, .cockpit-input-error, .cockpit-toolbar .cockpit-muted { grid-column: 1 / -1; justify-content: center; }
   }
   .cockpit-input:focus-visible { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
   .cockpit-input-error { color: var(--danger); font-size: 12px; }
@@ -105,3 +105,32 @@
   .cockpit-priority.source.P0 { color: var(--danger); border-color: var(--danger); }
   .cockpit-priority.suggested { color: var(--muted); border-style: dashed; }
   .cockpit-action-subject { font-size: 12px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
+
+  /* Attention (portfolio) */
+  .attention-title { margin: 0; font-size: 18px; }
+  .attention-warning { margin-bottom: 10px; overflow-wrap: anywhere; }
+  .attention-cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  .attention-card { border-top: 1px solid var(--border-soft); padding-top: 10px; min-width: 0; }
+  .attention-card:first-child { border-top: 0; padding-top: 0; }
+  .attention-reasons { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+  .attention-card-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+  .attention-card-actions .btn { width: auto; padding: 0 12px; min-height: 30px; text-decoration: none; }
+  .attention-forced-note { font-size: 12px; color: var(--warn); margin-top: 2px; overflow-wrap: anywhere; }
+  .attention-override-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+  .attention-override-form .btn { width: auto; padding: 0 12px; min-height: 32px; }
+  .attention-override-form label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+  .attention-days { width: 70px; }
+  .attention-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 12.5px; }
+  .attention-history li { display: flex; flex-wrap: wrap; gap: 4px 8px; overflow-wrap: anywhere; }
+  .attention-brief { margin-top: 8px; font-size: 13px; }
+  .attention-bucket-pill {
+    display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px;
+    background: var(--panel-2); border: 1px solid var(--border-soft); color: var(--text);
+  }
+  .attention-bucket-pill.NOW { color: var(--danger); border-color: var(--danger); }
+  .attention-bucket-pill.URGENT { color: var(--warn); border-color: var(--warn); }
+  .attention-bucket-pill.BLOCKED { color: var(--danger); border-style: dashed; }
+  .attention-bucket-pill.ALMOST_DONE { color: var(--success); border-color: var(--success); }
+  .attention-bucket-pill.INACTIVE,
+  .attention-bucket-pill.ARCHIVE_CANDIDATE,
+  .attention-bucket-pill.UNKNOWN { color: var(--muted); }

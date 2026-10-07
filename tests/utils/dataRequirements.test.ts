@@ -14,6 +14,7 @@ describe("dataRequirementsForTab", () => {
     expect([...dataRequirementsForTab("digests")]).toEqual([]);
     expect([...dataRequirementsForTab("kanban")]).toEqual([]);
     expect([...dataRequirementsForTab("cockpit")]).toEqual([]);
+    expect([...dataRequirementsForTab("attention")]).toEqual([]);
   });
 
   it("loads only datasets used by a deep-linked repository tab", () => {

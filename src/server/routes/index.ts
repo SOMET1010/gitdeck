@@ -1,5 +1,6 @@
 import type { AppRouter } from "../router";
 import { registerAccountRoutes } from "./accounts";
+import { registerAttentionRoutes } from "./attention";
 import { registerAuthRoutes } from "./auth";
 import { registerDashboardRoutes } from "./dashboard";
 import { registerDevCockpitRoutes } from "./devCockpit";
@@ -17,4 +18,5 @@ export function registerApiRoutes(router: AppRouter): void {
   registerProjectRoutes(router);
   registerNotificationRoutes(router);
   registerDevCockpitRoutes(router);
+  registerAttentionRoutes(router);
 }

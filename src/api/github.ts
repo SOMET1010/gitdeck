@@ -23,6 +23,7 @@ import type {
   StargazerNode,
 } from "../types/github";
 import type { DevCockpitData } from "../types/devCockpit";
+import type { AttentionBrief, AttentionBucket, AttentionData, AttentionOverride, BriefQuestion, HistoryEntry } from "../types/attention";
 
 export class AuthRequiredClientError extends Error {
   constructor(message = "authentication required") {
@@ -300,6 +301,34 @@ export function fetchDevCockpit(repo: string, branch: string | null, signal?: Ab
   const params = new URLSearchParams({ repo });
   if (branch) params.set("branch", branch);
   return readJson<DevCockpitData>(`/api/dev-cockpit?${params.toString()}`, withSignal(signal));
+}
+
+export function fetchAttention(fresh = false, signal?: AbortSignal): Promise<AttentionData> {
+  return readJson<AttentionData>(`/api/attention${fresh ? "?fresh=1" : ""}`, withSignal(signal));
+}
+
+export function fetchAttentionBrief(question: BriefQuestion): Promise<AttentionBrief> {
+  return readJson<AttentionBrief>(`/api/attention/brief?question=${question}`);
+}
+
+export function fetchAttentionHistory(repo?: string): Promise<{ ok: true; history: HistoryEntry[] }> {
+  return readJson(`/api/attention/history${repo ? `?repo=${encodeURIComponent(repo)}` : ""}`);
+}
+
+function postJson<T>(url: string, body: unknown): Promise<T> {
+  return readJson<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+export function setAttentionOverride(repo: string, bucket: AttentionBucket, reason: string, days: number): Promise<{ ok: true; override: AttentionOverride }> {
+  return postJson("/api/attention/override", { repo, bucket, reason, days });
+}
+
+export function clearAttentionOverride(repo: string, reason: string): Promise<{ ok: true; cleared: boolean }> {
+  return postJson("/api/attention/override/clear", { repo, reason });
+}
+
+export function setAttentionWatched(repo: string, watched: boolean): Promise<{ ok: true; watchList: string[] }> {
+  return postJson("/api/attention/watch", { repo, watched });
 }
 
 export function fetchNotifications(fresh = false, signal?: AbortSignal): Promise<NotificationsData> {
